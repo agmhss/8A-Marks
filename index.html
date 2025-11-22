@@ -404,16 +404,7 @@
       to   { opacity: 1; transform: translateY(0); }
     }
 
-    @media (max-width: 840px) {
-      .container { padding: 16px 14px 18px; border-radius: 22px; }
-      .form-grid {
-        grid-template-columns: minmax(0,1fr);
-      }
-      .result-wrapper {
-        grid-template-columns: minmax(0,1fr);
-      }
-      h1 { font-size: 1.5rem; }
-    }
+    
   </style>
 </head>
 <body>
@@ -434,7 +425,43 @@
       </div>
     </div>
 
-    <!-- INPUT CARD -->
+    <!-- INPUT @media (max-width: 840px) {
+  .container { 
+    padding: 16px 14px 18px; 
+    border-radius: 22px; 
+  }
+  
+  .form-grid {
+    grid-template-columns: minmax(0,1fr);
+  }
+  
+  .result-wrapper {
+    grid-template-columns: minmax(0,1fr);
+  }
+  
+  h1 { 
+    font-size: 1.5rem; 
+  }
+
+  /* PERFECTLY CENTERED RESULT TABLE ON MOBILE */
+  table {
+    width: 100%;
+    max-width: 420px;           /* feels perfect on every phone */
+    margin: 16px auto 0;        /* top margin + horizontal centering */
+    display: table;                /* forces proper centering */
+    table-layout: fixed;        /* equal column widths & no stretching */
+    font-size: 0.86rem;         /* slightly larger text for readability */
+  }
+
+  th, td {
+    padding: 8px 6px;           /* more breathing room on mobile */
+  }
+
+  thead {
+    font-size: 0.82rem;         /* header a bit smaller so it fits nicely */
+  }
+}
+    CARD -->
     <div class="card">
       <div class="welcome">
         Dear student, please enter your <span>Exam Number</span> and select one or more exams.
