@@ -445,7 +445,6 @@
         <div>
           <label>Exams to Compare</label>
           <div id="examOptions" class="exam-options">
-            <!-- Filled by JavaScript after reading sheet -->
             Loading exam list...
           </div>
         </div>
@@ -493,8 +492,16 @@
 
   <script>
     /******************* CONFIG – EDIT THIS *******************/
-    const SHEET_ID = "1Kv9tkcP8HWt9eloHVlrgU_ideYqmEagk14ezTuEvlkU";     // ← paste your Google Sheet ID here
-    const SHEET_NAME = "Marks";                // tab name (should stay as "Marks")
+    const SHEET_ID   = "1Kv9tkcP8HWt9eloHVlrgU_ideYqmEagk14ezTuEvlkU";   // ← paste only the ID, not the whole URL
+    const SHEET_NAME = "Marks";                // tab name
+
+    // Exam display names by block order (block 4+ optional – you can add more)
+    const EXAM_NAMES = [
+      "I Mid-Term",
+      "Quarterly",
+      "II Mid-Term",
+      "Half-Yearly",   // block 4 – when you add it
+    ];
     /*********************************************************/
 
     let sheetCols = [];
@@ -545,7 +552,7 @@
 
         detectExamBlocks();
         if (!exams.length) {
-          statusEl.textContent = "Could not detect exam blocks. Please check the sheet layout.";
+          statusEl.textContent = "Could not detect exam blocks. Check that each block starts with 'EXAM NO' in the header row.";
           examOptions.textContent = "No exams found.";
           return;
         }
@@ -554,84 +561,57 @@
         statusEl.textContent = "Ready. Enter your Exam Number and choose the exams.";
       } catch (err) {
         console.error(err);
-        statusEl.textContent = "Error loading data. Check Sheet ID / sharing settings.";
+        statusEl.textContent = "Error loading data. Check Sheet ID / publishing / sharing settings.";
         examOptions.textContent = "Error loading.";
       }
     }
 
+    // NEW: detect exam blocks wherever header label is "EXAM NO"
     function detectExamBlocks() {
       exams = [];
-      const headerLabels = sheetCols;
-      const metaRow = sheetRows[0]; // row with "EXAM NO", "NAME", "TAMIL", ...
+      const headers = sheetCols.map(h => (h || "").trim());
+      const starts = [];
 
-      // Step 1: detect start/end columns of each exam block from non-empty header labels
-      const groups = [];
-      for (let i = 0; i < headerLabels.length; i++) {
-        const label = (headerLabels[i] || "").trim();
-        if (label && !label.toLowerCase().startsWith("unnamed")) {
-          if (groups.length > 0) {
-            groups[groups.length - 1].end = i - 1;
+      headers.forEach((lbl, idx) => {
+        if (lbl.toLowerCase().startsWith("exam no")) {
+          starts.push(idx);
+        }
+      });
+
+      if (!starts.length) return;
+
+      for (let bi = 0; bi < starts.length; bi++) {
+        const start = starts[bi];
+        const end = (bi + 1 < starts.length ? starts[bi + 1] : headers.length) - 1;
+
+        let examNoIndex = start;
+        let nameIndex = null;
+        let totalIndex = null;
+        const subjects = [];
+
+        for (let c = start + 1; c <= end; c++) {
+          const label = headers[c];
+          if (!label) continue;
+
+          const lower = label.toLowerCase();
+          if (lower === "name") {
+            nameIndex = c;
+          } else if (lower.includes("total")) {
+            totalIndex = c;
+          } else if (!lower.includes("rank")) {
+            subjects.push({ name: label, colIndex: c });
           }
-          groups.push({ label, start: i, end: i });
-        }
-      }
-      if (groups.length) {
-        groups[groups.length - 1].end = headerLabels.length - 1;
-      }
-
-      // Step 2: for each group, detect columns: examNo, name, subjects, total
-      groups.forEach(group => {
-        const start = group.start;
-        const end   = group.end;
-
-        const metaSlice = [];
-        for (let c = start; c <= end; c++) {
-          metaSlice.push({
-            index: c,
-            header: (metaRow[c] != null ? String(metaRow[c]) : "").trim()
-          });
         }
 
-        let examNoIndex = null;
-        let nameIndex   = null;
-        let totalIndex  = null;
-        const subjects  = [];
-
-        metaSlice.forEach(col => {
-          const h = col.header;
-          if (!h) return;
-          const lower = h.toLowerCase();
-          if (lower.startsWith("exam")) {
-            examNoIndex = col.index;
-          } else if (lower === "name") {
-            nameIndex = col.index;
-          } else if (lower.startsWith("total")) {
-            totalIndex = col.index;
-          } else if (lower.startsWith("rank")) {
-            // we will calculate rank ourselves, ignore sheet "Rank"
-          } else {
-            subjects.push({ name: h, colIndex: col.index });
-          }
-        });
-
-        if (examNoIndex == null || nameIndex == null || !subjects.length || totalIndex == null) {
-          // Not a proper block – skip
-          return;
+        if (nameIndex == null || totalIndex == null || !subjects.length) {
+          continue; // skip malformed block
         }
 
-        // Clean exam display name: remove "Marks"/"Exam" words
-        let displayName = group.label
-          .replace(/marks?/i, "")
-          .replace(/exam/i, "")
-          .trim();
-
-        // If it becomes empty, fallback to original label
-        if (!displayName) displayName = group.label.trim();
+        const configuredName = EXAM_NAMES[bi] || ("Exam " + (bi + 1));
 
         exams.push({
-          id: displayName,
-          label: displayName,
-          headerLabel: group.label,
+          id: configuredName,
+          label: configuredName,
           startCol: start,
           endCol: end,
           examNoIndex,
@@ -639,7 +619,7 @@
           totalIndex,
           subjects
         });
-      });
+      }
     }
 
     function buildExamOptions() {
@@ -692,8 +672,7 @@
         return;
       }
 
-      // Data rows start from index 1 (index 0 is meta row with column names)
-      const dataRows = sheetRows.slice(1);
+      const dataRows = sheetRows; // first row is already student data (headers are in sheetCols)
 
       const examResults = [];
       let studentName = "";
@@ -728,7 +707,6 @@
       let studentRowIndex = -1;
       let studentRow = null;
 
-      // Find row by Exam Number
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
         const value = row[examNoIdx];
@@ -749,14 +727,12 @@
       const totalRaw = studentRow[totalIdx];
       const total = totalRaw != null ? totalRaw : "";
 
-      // Get subject marks
       const subjectMarks = {};
       subjects.forEach(sub => {
         const v = studentRow[sub.colIndex];
         subjectMarks[sub.name] = (v != null ? v : "");
       });
 
-      // Calculate rank based on Total across all rows for this exam
       const rank = calculateRankForExam(dataRows, exam, String(studentRow[examNoIdx]).trim(), totalRaw);
 
       return { name, examNo: String(studentRow[examNoIdx]).trim(), total, subjectMarks, rank };
@@ -782,10 +758,8 @@
 
       if (!scoreList.length) return "";
 
-      // Sort descending by total
       scoreList.sort((a, b) => b.total - a.total);
 
-      // Simple rank assignment (no special tie handling)
       for (let i = 0; i < scoreList.length; i++) {
         if (scoreList[i].examNo === studentExamNo) {
           return i + 1;
@@ -795,7 +769,6 @@
     }
 
     function renderResultTable(examNo, studentName, examResults) {
-      // Determine all distinct subjects across the selected exams
       const subjectSet = new Set();
       examResults.forEach(er => {
         const exam = er.exam;
@@ -803,7 +776,6 @@
       });
       const subjects = Array.from(subjectSet);
 
-      // Build table
       const table = document.createElement("table");
 
       const thead = document.createElement("thead");
@@ -823,7 +795,6 @@
 
       const tbody = document.createElement("tbody");
 
-      // Subject rows
       subjects.forEach(subName => {
         const tr = document.createElement("tr");
         const tdLabel = document.createElement("td");
@@ -846,7 +817,6 @@
         tbody.appendChild(tr);
       });
 
-      // Total row
       const trTotal = document.createElement("tr");
       trTotal.className = "total-row";
       const tdTotalLabel = document.createElement("td");
@@ -862,7 +832,6 @@
       });
       tbody.appendChild(trTotal);
 
-      // Rank row
       const trRank = document.createElement("tr");
       trRank.className = "rank-row";
       const tdRankLabel = document.createElement("td");
@@ -881,7 +850,6 @@
       table.appendChild(thead);
       table.appendChild(tbody);
 
-      // Fill heading + meta
       studentNameEl.textContent = studentName || "(Name not available)";
       studentExamNoEl.textContent = examNo;
       examLabelSmall.textContent =
@@ -903,7 +871,7 @@
         star.className = "star";
         star.textContent = emojis[Math.floor(Math.random() * emojis.length)];
 
-        const startX = Math.random() * 100; // viewport width %
+        const startX = Math.random() * 100;
         const delay = Math.random() * 0.4;
         const duration = 1.4 + Math.random() * 0.7;
 
