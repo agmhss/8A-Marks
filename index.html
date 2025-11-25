@@ -728,34 +728,54 @@
     }
 
     function calculateRankForExam(dataRows, exam, studentExamNo, studentTotalRaw) {
-      const totalIdx = exam.totalIndex;
-      const examNoIdx = exam.examNoIndex;
+  const totalIdx = exam.totalIndex;
+  const examNoIdx = exam.examNoIndex;
+  const subjects = exam.subjects;
 
-      const scoreList = [];
-      dataRows.forEach(row => {
-        const totalVal = row[totalIdx];
-        if (totalVal == null) return;
-        const num = Number(totalVal);
-        if (Number.isNaN(num)) return;
-
-        const exNoCell = row[examNoIdx];
-        if (exNoCell == null) return;
-        const exNo = String(exNoCell).trim();
-
-        scoreList.push({ examNo: exNo, total: num });
-      });
-
-      if (!scoreList.length) return "";
-
-      scoreList.sort((a, b) => b.total - a.total);
-
-      for (let i = 0; i < scoreList.length; i++) {
-        if (scoreList[i].examNo === studentExamNo) {
-          return i + 1;
-        }
-      }
-      return "";
+  // Helper: check if a student passed ALL subjects (>34)
+  function passedAll(row) {
+    for (let s of subjects) {
+      const mark = row[s.colIndex];
+      if (mark == null || Number(mark) <= 34) return false;
     }
+    return true;
+  }
+
+  const scoreList = [];
+
+  dataRows.forEach(row => {
+    // include only students who passed ALL subjects
+    if (!passedAll(row)) return;
+
+    const totalVal = row[totalIdx];
+    if (totalVal == null) return;
+    const num = Number(totalVal);
+    if (Number.isNaN(num)) return;
+
+    const exNoCell = row[examNoIdx];
+    if (exNoCell == null) return;
+    const exNo = String(exNoCell).trim();
+
+    scoreList.push({ examNo: exNo, total: num });
+  });
+
+  if (!scoreList.length) return "-";
+
+  // sort top to bottom
+  scoreList.sort((a, b) => b.total - a.total);
+
+  // if THIS student didn't pass, return "-"
+  const studentRow = dataRows.find(r => String(r[examNoIdx]).trim() === studentExamNo);
+  if (!studentRow || !passedAll(studentRow)) return "-";
+
+  for (let i = 0; i < scoreList.length; i++) {
+    if (scoreList[i].examNo === studentExamNo) {
+      return i + 1;
+    }
+  }
+  
+  return "-";
+}
 
     function renderResultTable(examNo, studentName, examResults) {
       const subjectSet = new Set();
