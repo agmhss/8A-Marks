@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>THIRAN Result Viewer – Class 6-9</title>
+  <title>Exam Result Viewer – Class 8A</title>
   <style>
     /* (Same beautiful styles as before – no change needed) */
     :root { --primary:#2563eb; --accent:#f97316; --bg-dark:#020617; --card-bg:rgba(15,23,42,0.96); --text-main:#e5e7eb; }
@@ -35,14 +35,14 @@
 </head>
 <body>
   <div class="container">
-    <h1><span class="logo">★</span> THIRAN Result Viewer</h1>
+    <h1><span class="logo">★</span> Exam Result Viewer</h1>
     <div class="card">
       <div style="margin-bottom:12px; color:#cbd5f5;">
         Enter your <strong style="color:#facc15;">EMIS Number</strong> and select exams
       </div>
       <div class="form-grid">
         <div>
-          <label>EMIS Number</label>
+          <label>Exam Number</label>
           <input id="emisInput" type="text" placeholder="e.g. 3312345678" />
         </div>
         <div>
@@ -70,8 +70,8 @@
   <script>
     // CONFIG — ONLY CHANGE THESE TWO LINES
     const SHEET_ID   = "1RkGzPu3KkP5FRZqPMgmIYVbu2--y-NobJMpbNo-GgIc";
-    const SHEET_NAME = "Thiran";
-    const EXAM_NAMES = ["July", "August", "September", "November", "December", "January", "February", "March"];
+    const SHEET_NAME = "Marks";
+    const EXAM_NAMES = ["I Mid-Term", "Quarterly", "II Mid-Term", "Half-Yearly"];
 
     let exams = [];
     const status = document.getElementById("status");
