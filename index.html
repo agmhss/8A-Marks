@@ -107,7 +107,6 @@
 
       for (let i = 0; i < headers.length; i++) {
         if (headers[i].toLowerCase().includes("exam no")) {
-          // Find next exam block start
           let nextExamStart = -1;
           for (let j = i + 1; j < headers.length; j++) {
             if (headers[j].toLowerCase().includes("exam no")) {
@@ -222,7 +221,18 @@
     function renderTable(name, examno, cls, results) {
       const allSubjects = new Set();
       results.forEach(r => Object.keys(r.marks).forEach(s => allSubjects.add(s)));
-      const subjects = Array.from(allSubjects).sort(); // optional: sort subjects alphabetically
+      let subjects = Array.from(allSubjects);
+
+      // Sort: Tamil first (case-insensitive, partial match), then alphabetical
+      subjects.sort((a, b) => {
+        const aLower = a.toLowerCase();
+        const bLower = b.toLowerCase();
+        const aIsTamil = aLower.includes("tamil");
+        const bIsTamil = bLower.includes("tamil");
+        if (aIsTamil && !bIsTamil) return -1;
+        if (!aIsTamil && bIsTamil) return 1;
+        return a.localeCompare(b);
+      });
 
       let html = `<table><thead><tr><th>Subject</th>`;
       results.forEach(r => html += `<th>${r.exam}</th>`);
