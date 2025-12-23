@@ -43,7 +43,7 @@
       <div class="form-grid">
         <div>
           <label>Exam Number</label>
-          <input id="emisInput" type="text" placeholder="e.g. 3312345678" />
+          <input id="EXAMNOInput" type="text" placeholder="e.g. 8108" />
         </div>
         <div>
           <label>Select Exams</label>
@@ -60,7 +60,7 @@
       <h2>Marks Comparison <small id="examLabels"></small></h2>
       <div class="student-meta">
         <span><strong>Name:</strong> <span id="sName">—</span></span>
-        <span><strong>ExamNo:</strong> <span id="sExamNo">—</span></span>
+        <span><strong>ExamNo:</strong> <span id="sEXAMNO">—</span></span>
         <span><strong>Class & Sec:</strong> <span id="sClass">—</span></span>
       </div>
       <div id="tableWrapper"></div>
@@ -114,14 +114,14 @@
       let blockId = 0;
 
       for (let i = 0; i < headers.length; i++) {
-        if (headers[i] && headers[i].toLowerCase().includes("emis no")) {
+        if (headers[i] && headers[i].toLowerCase().includes("EXAM NO")) {
           const start = i;
           const nextEmis = headers.slice(i + 1).findIndex(h => h?.toLowerCase().includes("emis no"));
-          const end = nextEmis === -1 ? headers.length - 1 : i + nextEmis + 1;
+          const end = nextEXAMNO === -1 ? headers.length - 1 : i + nextEXAMNO + 1;
 
           const block = {
             label: EXAM_NAMES[blockId] || `Exam ${blockId + 1}`,
-            emisCol: i,
+            EXAMNOCol: i,
             nameCol: null,
             classCol: null,
             totalCol: null,
@@ -130,7 +130,7 @@
 
           for (let c = start + 1; c <= end; c++) {
             const label = (headers[c] || "").toLowerCase();
-            if (label.includes("name") && !label.includes("emis")) block.nameCol = c;
+            if (label.includes("name") && !label.includes("EXAM NO")) block.nameCol = c;
             else if (label.includes("class") || label.includes("sec")) block.classCol = c;
             else if (label.includes("total") && !label.includes("rank")) block.totalCol = c;
             else if (headers[c] && !["rank", "s.no", "sl.no"].some(x => label.includes(x))) {
@@ -169,7 +169,7 @@
     document.getElementById("ExamNoInput").addEventListener("keypress", e => e.key === "Enter" && showResults());
 
     function showResults() {
-      const emis = document.getElementById("emisInput").value.trim();
+      const emis = document.getElementById("EXAMNOInput").value.trim();
       if (!emis) return status.textContent = "Enter Exam Number";
 
       const selected = Array.from(examOptions.querySelectorAll("input:checked"))
@@ -228,7 +228,7 @@
       html += `</tr></tbody></table>`;
 
       document.getElementById("sName").textContent = name || "—";
-      document.getElementById("sEmis").textContent = ExamNo;
+      document.getElementById("sEXAMNO").textContent = EXAM NO;
       document.getElementById("sClass").textContent = cls || "—";
       document.getElementById("examLabels").textContent = results.map(r => r.exam).join(" vs ");
       document.getElementById("tableWrapper").innerHTML = html;
