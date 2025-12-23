@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Exam Result Viewer – Class 8A</title>
   <style>
-    /* (Same beautiful styles as before – no change needed) */
     :root { --primary:#2563eb; --accent:#f97316; --bg-dark:#020617; --card-bg:rgba(15,23,42,0.96); --text-main:#e5e7eb; }
     * { box-sizing:border-box; margin:0; padding:0; }
     body { min-height:100vh; font-family:system-ui,sans-serif; background:radial-gradient(circle at top,#1d4ed8 0,#020617 45%,#020617 100%); color:var(--text-main); display:flex; align-items:center; justify-content:center; padding:16px; }
@@ -43,7 +42,7 @@
       <div class="form-grid">
         <div>
           <label>Exam Number</label>
-          <input id="EXAMNOInput" type="text" placeholder="e.g. 8108" />
+          <input id="examNoInput" type="text" placeholder="e.g. 8108" />
         </div>
         <div>
           <label>Select Exams</label>
@@ -55,7 +54,6 @@
       </div>
       <div id="status"></div>
     </div>
-
     <div id="resultArea" style="display:none;" class="result-card">
       <h2>Marks Comparison <small id="examLabels"></small></h2>
       <div class="student-meta">
@@ -66,42 +64,36 @@
       <div id="tableWrapper"></div>
     </div>
   </div>
-
   <script>
     // CONFIG — ONLY CHANGE THESE TWO LINES
-    const SHEET_ID   = "1RkGzPu3KkP5FRZqPMgmIYVbu2--y-NobJMpbNo-GgIc";
+    const SHEET_ID = "1RkGzPu3KkP5FRZqPMgmIYVbu2--y-NobJMpbNo-GgIc";
     const SHEET_NAME = "Marks";
     const EXAM_NAMES = ["I Mid-Term", "Quarterly", "II Mid-Term", "Half-Yearly"];
 
     let exams = [];
+    let sheetRows = [];
     const status = document.getElementById("status");
     const examOptions = document.getElementById("examOptions");
 
-    // SUPER ROBUST Google Sheets loader (works 100% as of Dec 2025)
     async function loadSheet() {
       status.textContent = "Connecting to Google Sheets...";
-      const url = `https://docs.google.com/spreadsheets/d/\( {SHEET_ID}/gviz/tq?tqx=out:json&sheet= \){encodeURIComponent(SHEET_NAME)}`;
-
+      const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
       try {
         const resp = await fetch(url);
         if (!resp.ok) throw new Error("Network error");
-
         let text = await resp.text();
-
-        // Remove the "/*O_o*/" wrapper that Google adds
-        const start = text.indexOf("{");
-        const end = text.lastIndexOf("}") + 1;
-        if (start === -1 || end === 0) throw new Error("Invalid JSON response");
-
-        text = text.substring(start, end);
+        const jsonStart = text.indexOf("{");
+        const jsonEnd = text.lastIndexOf("}") + 1;
+        if (jsonStart === -1 || jsonEnd === 0) throw new Error("Invalid JSON response");
+        text = text.substring(jsonStart, jsonEnd);
         const data = JSON.parse(text);
 
-        const cols = data.table.cols.map(c => (c?.label || "").trim());
-        const rows = data.table.rows.map(r => r.c?.map(cell => cell?.v ?? null) || []);
+        const headers = data.table.cols.map(c => (c?.label || c?.id || "").trim()).filter(h => h);
+        sheetRows = data.table.rows.map(r => r.c.map(cell => cell?.v ?? null));
 
-        if (rows.length === 0) throw new Error("Sheet is empty");
+        if (sheetRows.length === 0) throw new Error("Sheet is empty");
 
-        detectExamBlocks(cols, rows);
+        detectExamBlocks(headers);
       } catch (err) {
         console.error(err);
         status.textContent = "Failed to load data. Check: Sheet ID, Tab name, and Publish to Web!";
@@ -109,15 +101,21 @@
       }
     }
 
-    function detectExamBlocks(headers, rows) {
+    function detectExamBlocks(headers) {
       exams = [];
       let blockId = 0;
 
       for (let i = 0; i < headers.length; i++) {
-        if (headers[i] && headers[i].toLowerCase().includes("EXAM NO")) {
-          const start = i;
-          const nextEmis = headers.slice(i + 1).findIndex(h => h?.toLowerCase().includes("emis no"));
-          const end = nextEXAMNO === -1 ? headers.length - 1 : i + nextEXAMNO + 1;
+        if (headers[i].toLowerCase().includes("exam no")) {
+          // Find next exam block start
+          let nextExamStart = -1;
+          for (let j = i + 1; j < headers.length; j++) {
+            if (headers[j].toLowerCase().includes("exam no")) {
+              nextExamStart = j;
+              break;
+            }
+          }
+          const end = nextExamStart === -1 ? headers.length : nextExamStart;
 
           const block = {
             label: EXAM_NAMES[blockId] || `Exam ${blockId + 1}`,
@@ -128,12 +126,15 @@
             subjects: []
           };
 
-          for (let c = start + 1; c <= end; c++) {
-            const label = (headers[c] || "").toLowerCase();
-            if (label.includes("name") && !label.includes("EXAM NO")) block.nameCol = c;
-            else if (label.includes("class") || label.includes("sec")) block.classCol = c;
-            else if (label.includes("total") && !label.includes("rank")) block.totalCol = c;
-            else if (headers[c] && !["rank", "s.no", "sl.no"].some(x => label.includes(x))) {
+          for (let c = i + 1; c < end; c++) {
+            const labelLower = (headers[c] || "").toLowerCase();
+            if (labelLower.includes("name") && !labelLower.includes("exam no")) {
+              block.nameCol = c;
+            } else if (labelLower.includes("class") || labelLower.includes("sec")) {
+              block.classCol = c;
+            } else if (labelLower.includes("total") && !labelLower.includes("rank")) {
+              block.totalCol = c;
+            } else if (headers[c] && !["rank", "s.no", "sl.no", "emis no"].some(x => labelLower.includes(x))) {
               block.subjects.push({ name: headers[c], col: c });
             }
           }
@@ -146,7 +147,7 @@
       }
 
       if (exams.length === 0) {
-        status.textContent = "No exam blocks detected. Each block must start with 'Exam NO' column.";
+        status.textContent = "No exam blocks detected. Each block must have a column containing 'Exam No'.";
         examOptions.innerHTML = "No exams found";
         return;
       }
@@ -160,35 +161,48 @@
       exams.forEach((exam, idx) => {
         const lbl = document.createElement("label");
         lbl.className = "exam-pill";
-        lbl.innerHTML = `<input type="checkbox" value="\( {idx}"> <span> \){exam.label}</span>`;
+        lbl.innerHTML = `<input type="checkbox" value="${idx}"> <span>${exam.label}</span>`;
         examOptions.appendChild(lbl);
       });
     }
 
     document.getElementById("showBtn").onclick = showResults;
-    document.getElementById("ExamNoInput").addEventListener("keypress", e => e.key === "Enter" && showResults());
+
+    document.getElementById("examNoInput").addEventListener("keypress", e => {
+      if (e.key === "Enter") showResults();
+    });
 
     function showResults() {
-      const emis = document.getElementById("EXAMNOInput").value.trim();
-      if (!emis) return status.textContent = "Enter Exam Number";
+      const examNo = document.getElementById("examNoInput").value.trim();
+      if (!examNo) {
+        status.textContent = "Enter Exam Number";
+        return;
+      }
 
       const selected = Array.from(examOptions.querySelectorAll("input:checked"))
-                       .map(cb => parseInt(cb.value));
+        .map(cb => parseInt(cb.value));
 
-      if (selected.length === 0) return status.textContent = "Select at least one exam";
+      if (selected.length === 0) {
+        status.textContent = "Select at least one exam";
+        return;
+      }
 
       const results = [];
-      let name = "", cls = "";
+      let name = "";
+      let cls = "";
 
       selected.forEach(idx => {
         const exam = exams[idx];
-        const row = sheetRows.find(r => r[exam.emisCol] != null && String(r[exam.emisCol]).trim() === emis);
+        const row = sheetRows.find(r => r[exam.EXAMNOCol] != null && String(r[exam.EXAMNOCol]).trim() === examNo);
+
         if (row) {
-          name = name || row[exam.nameCol] || "";
-          cls = cls || (exam.classCol !== null ? row[exam.classCol] : "") || "";
+          name = name || (row[exam.nameCol] ?? "");
+          cls = cls || (exam.classCol !== null ? (row[exam.classCol] ?? "") : "");
           const marks = {};
-          exam.subjects.forEach(s => marks[s.name] = row[s.col] ?? "");
-          results.push({ exam: exam.label, total: row[exam.totalCol] ?? "", marks });
+          exam.subjects.forEach(s => {
+            marks[s.name] = row[s.col] ?? "-";
+          });
+          results.push({ exam: exam.label, total: row[exam.totalCol] ?? "-", marks });
         } else {
           results.push({ exam: exam.label, total: "-", marks: {} });
         }
@@ -200,7 +214,7 @@
         return;
       }
 
-      renderTable(name, emis, cls, results);
+      renderTable(name, examNo, cls, results);
       document.getElementById("resultArea").style.display = "block";
       status.textContent = "";
     }
@@ -208,7 +222,7 @@
     function renderTable(name, examno, cls, results) {
       const allSubjects = new Set();
       results.forEach(r => Object.keys(r.marks).forEach(s => allSubjects.add(s)));
-      const subjects = Array.from(allSubjects);
+      const subjects = Array.from(allSubjects).sort(); // optional: sort subjects alphabetically
 
       let html = `<table><thead><tr><th>Subject</th>`;
       results.forEach(r => html += `<th>${r.exam}</th>`);
@@ -228,15 +242,14 @@
       html += `</tr></tbody></table>`;
 
       document.getElementById("sName").textContent = name || "—";
-      document.getElementById("sEXAMNO").textContent = EXAM NO;
+      document.getElementById("sEXAMNO").textContent = examno || "—";
       document.getElementById("sClass").textContent = cls || "—";
       document.getElementById("examLabels").textContent = results.map(r => r.exam).join(" vs ");
       document.getElementById("tableWrapper").innerHTML = html;
     }
 
-    // Global variable for rows (set inside loadSheet)
-    let sheetRows = [];
-    loadSheet().then(() => { sheetRows = sheetRows; }); // will be filled inside detectExamBlocks
+    // Start loading
+    loadSheet();
   </script>
 </body>
 </html>
