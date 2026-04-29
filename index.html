@@ -82,10 +82,10 @@
     const status = document.getElementById("status");
     const examOptions = document.getElementById("examOptions");
 
-    // Helper: Cleans invisible decimals (.0) and spaces from ID numbers
+    // HELPER: Aggressively cleans numbers so exact matches happen
     function cleanID(id) {
       if (id == null) return "";
-      return String(id).replace(/\.0$/, '').trim();
+      return String(id).replace(/\.0$/, '').replace(/\s+/g, '').trim();
     }
 
     async function loadData() {
@@ -121,13 +121,10 @@
     function processStudentInfo(data) {
       studentInfoMap = {};
       const headers = data.table.cols.map(c => (c?.label || "").toLowerCase().replace(/[^a-z]/g, ''));
-      
-      // Fallback: If headers are empty, scan the first row of actual data
       const firstRow = data.table.rows[0] ? data.table.rows[0].c.map(cell => String(cell?.v || "").toLowerCase().replace(/[^a-z]/g, '')) : [];
 
       let emisCol = -1, nameCol = -1, classCol = -1;
 
-      // Smart Column Detection
       for(let i=0; i < Math.max(headers.length, firstRow.length); i++) {
         const h = headers[i] || "";
         const f = firstRow[i] || "";
@@ -136,7 +133,7 @@
         if (classCol === -1 && (h.includes("class") || h.includes("sec") || f.includes("class"))) classCol = i;
       }
 
-      // Default to columns 0, 1, 2 if names are completely unrecognized
+      // Default fallback
       if (emisCol === -1) emisCol = 0;
       if (nameCol === -1) nameCol = emisCol + 1;
       if (classCol === -1) classCol = emisCol + 2;
@@ -144,7 +141,10 @@
       const rows = data.table.rows.map(r => r.c.map(cell => cell?.v ?? null));
 
       rows.forEach(row => {
-        const emis = cleanID(row[emisCol]);
+        // Super Search for Student Info: check first 3 columns just in case S.No is shifting it
+        let emis = cleanID(row[emisCol]);
+        if (!emis && emisCol === 0 && row.length > 1) emis = cleanID(row[1]); 
+
         if (emis && emis !== "null") {
           studentInfoMap[emis] = {
             name: row[nameCol] || "Name missing in sheet",
@@ -167,17 +167,8 @@
       exams = [];
       let blockId = 0;
 
-      // 1. Find the master EMIS/Exam No column (usually near the start)
-      let emisCol = headers.findIndex(h => {
-        const hLower = h.toLowerCase().replace(/[^a-z]/g, '');
-        return hLower.includes("emis") || hLower.includes("examno") || hLower.includes("roll");
-      });
-      if (emisCol === -1) emisCol = 0; // Fallback
-
-      // 2. We chunk exams dynamically. An exam block ENDS when we see a "Total" column.
       let currentBlock = {
         label: EXAM_NAMES[blockId] || `Exam ${blockId + 1}`,
-        EXAMNOCol: emisCol,
         totalCol: null,
         resultCol: null,
         subjects: []
@@ -187,12 +178,10 @@
         const hLower = (headers[c] || "").toLowerCase().trim();
         const hAlpha = hLower.replace(/[^a-z]/g, '');
 
-        // Skip static info columns
         if (["rank", "sno", "slno", "emis", "examno", "name", "class", "sec", "roll"].some(x => hAlpha.includes(x))) {
           continue;
         }
 
-        // If it's a Total column, close this exam block and prepare the next one
         if (hLower.includes("total")) {
           currentBlock.totalCol = c;
           exams.push(currentBlock);
@@ -200,27 +189,23 @@
           
           currentBlock = {
             label: EXAM_NAMES[blockId] || `Exam ${blockId + 1}`,
-            EXAMNOCol: emisCol,
             totalCol: null,
             resultCol: null,
             subjects: []
           };
         } 
-        // If it's a Result column (for your 9th std manual entry)
         else if (hLower === "result" || hLower.includes("status")) {
            if (exams.length > 0 && currentBlock.subjects.length === 0) {
-              exams[exams.length - 1].resultCol = c; // Attach to previous block
+              exams[exams.length - 1].resultCol = c; 
            } else {
               currentBlock.resultCol = c;
            }
         }
-        // Otherwise, it's a regular Subject
         else if (headers[c]) {
           currentBlock.subjects.push({ name: headers[c], col: c });
         }
       }
 
-      // Catch any final subjects that didn't have a "Total" column after them
       if (currentBlock.subjects.length > 0) {
         exams.push(currentBlock);
       }
@@ -277,7 +262,11 @@
       
       selected.forEach(idx => {
         const exam = exams[idx];
-        const row = sheetRows.find(r => r[exam.EXAMNOCol] != null && cleanID(r[exam.EXAMNOCol]) === examNo);
+        
+        // SUPER SEARCH: Check the first 4 columns of the sheet for the EMIS number
+        const row = sheetRows.find(r => {
+          return [0, 1, 2, 3].some(colIdx => r[colIdx] != null && cleanID(r[colIdx]) === examNo);
+        });
 
         if (row) {
           const marks = {};
