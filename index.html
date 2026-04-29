@@ -70,7 +70,6 @@
   </div>
 
   <script>
-    // CONFIGURATION
     const SHEET_ID = "1RkGzPu3KkP5FRZqPMgmIYVbu2--y-NobJMpbNo-GgIc";
     const MARKS_SHEET = "Marks";
     const INFO_SHEET = "Sheet2"; 
@@ -82,6 +81,12 @@
     
     const status = document.getElementById("status");
     const examOptions = document.getElementById("examOptions");
+
+    // Helper: Cleans invisible decimals (.0) and spaces from ID numbers
+    function cleanID(id) {
+      if (id == null) return "";
+      return String(id).replace(/\.0$/, '').trim();
+    }
 
     async function loadData() {
       status.textContent = "Connecting to database...";
@@ -115,22 +120,34 @@
 
     function processStudentInfo(data) {
       studentInfoMap = {};
-      const headers = data.table.cols.map(c => (c?.label || "").toLowerCase());
+      const headers = data.table.cols.map(c => (c?.label || "").toLowerCase().replace(/[^a-z]/g, ''));
+      
+      // Fallback: If headers are empty, scan the first row of actual data
+      const firstRow = data.table.rows[0] ? data.table.rows[0].c.map(cell => String(cell?.v || "").toLowerCase().replace(/[^a-z]/g, '')) : [];
+
+      let emisCol = -1, nameCol = -1, classCol = -1;
+
+      // Smart Column Detection
+      for(let i=0; i < Math.max(headers.length, firstRow.length); i++) {
+        const h = headers[i] || "";
+        const f = firstRow[i] || "";
+        if (emisCol === -1 && (h.includes("emis") || h.includes("examno") || f.includes("emis"))) emisCol = i;
+        if (nameCol === -1 && (h.includes("name") || f.includes("name"))) nameCol = i;
+        if (classCol === -1 && (h.includes("class") || h.includes("sec") || f.includes("class"))) classCol = i;
+      }
+
+      // Default to columns 0, 1, 2 if names are completely unrecognized
+      if (emisCol === -1) emisCol = 0;
+      if (nameCol === -1) nameCol = emisCol + 1;
+      if (classCol === -1) classCol = emisCol + 2;
+
       const rows = data.table.rows.map(r => r.c.map(cell => cell?.v ?? null));
 
-      let emisCol = headers.findIndex(h => h.includes("emis") || h.includes("exam") || h.includes("roll"));
-      let nameCol = headers.findIndex(h => h.includes("name"));
-      let classCol = headers.findIndex(h => h.includes("class") || h.includes("sec"));
-
-      if (emisCol === -1) emisCol = 0;
-      if (nameCol === -1) nameCol = 1;
-      if (classCol === -1) classCol = 2;
-
       rows.forEach(row => {
-        const emis = String(row[emisCol] || "").trim();
+        const emis = cleanID(row[emisCol]);
         if (emis && emis !== "null") {
           studentInfoMap[emis] = {
-            name: row[nameCol] || "",
+            name: row[nameCol] || "Name missing in sheet",
             classSec: row[classCol] || ""
           };
         }
@@ -150,46 +167,62 @@
       exams = [];
       let blockId = 0;
 
-      for (let i = 0; i < headers.length; i++) {
-        const headerLower = headers[i].toLowerCase().replace(/[^a-z]/g, '');
-        
-        if (headerLower.includes("emis") || headerLower.includes("examno") || headerLower.includes("roll")) {
-          let nextExamStart = -1;
-          for (let j = i + 1; j < headers.length; j++) {
-            const nextHeaderLower = headers[j].toLowerCase().replace(/[^a-z]/g, '');
-            if (nextHeaderLower.includes("emis") || nextHeaderLower.includes("examno") || nextHeaderLower.includes("roll")) {
-              nextExamStart = j;
-              break;
-            }
-          }
-          const end = nextExamStart === -1 ? headers.length : nextExamStart;
+      // 1. Find the master EMIS/Exam No column (usually near the start)
+      let emisCol = headers.findIndex(h => {
+        const hLower = h.toLowerCase().replace(/[^a-z]/g, '');
+        return hLower.includes("emis") || hLower.includes("examno") || hLower.includes("roll");
+      });
+      if (emisCol === -1) emisCol = 0; // Fallback
 
-          const block = {
+      // 2. We chunk exams dynamically. An exam block ENDS when we see a "Total" column.
+      let currentBlock = {
+        label: EXAM_NAMES[blockId] || `Exam ${blockId + 1}`,
+        EXAMNOCol: emisCol,
+        totalCol: null,
+        resultCol: null,
+        subjects: []
+      };
+
+      for (let c = 0; c < headers.length; c++) {
+        const hLower = (headers[c] || "").toLowerCase().trim();
+        const hAlpha = hLower.replace(/[^a-z]/g, '');
+
+        // Skip static info columns
+        if (["rank", "sno", "slno", "emis", "examno", "name", "class", "sec", "roll"].some(x => hAlpha.includes(x))) {
+          continue;
+        }
+
+        // If it's a Total column, close this exam block and prepare the next one
+        if (hLower.includes("total")) {
+          currentBlock.totalCol = c;
+          exams.push(currentBlock);
+          blockId++;
+          
+          currentBlock = {
             label: EXAM_NAMES[blockId] || `Exam ${blockId + 1}`,
-            EXAMNOCol: i,
+            EXAMNOCol: emisCol,
             totalCol: null,
-            resultCol: null, // Stores manual Result column index
+            resultCol: null,
             subjects: []
           };
-
-          for (let c = i + 1; c < end; c++) {
-            const labelLower = (headers[c] || "").toLowerCase().trim();
-            
-            if (labelLower.includes("total") && !labelLower.includes("rank")) {
-              block.totalCol = c;
-            } else if (labelLower === "result" || labelLower.includes("status")) {
-              // DETECTS MANUAL RESULT COLUMN
-              block.resultCol = c;
-            } else if (headers[c] && !["rank", "s.no", "sl.no", "emis", "exam no", "name", "class", "sec"].some(x => labelLower.includes(x))) {
-              block.subjects.push({ name: headers[c], col: c });
-            }
-          }
-
-          if (block.subjects.length > 0) {
-            exams.push(block);
-            blockId++;
-          }
+        } 
+        // If it's a Result column (for your 9th std manual entry)
+        else if (hLower === "result" || hLower.includes("status")) {
+           if (exams.length > 0 && currentBlock.subjects.length === 0) {
+              exams[exams.length - 1].resultCol = c; // Attach to previous block
+           } else {
+              currentBlock.resultCol = c;
+           }
         }
+        // Otherwise, it's a regular Subject
+        else if (headers[c]) {
+          currentBlock.subjects.push({ name: headers[c], col: c });
+        }
+      }
+
+      // Catch any final subjects that didn't have a "Total" column after them
+      if (currentBlock.subjects.length > 0) {
+        exams.push(currentBlock);
       }
 
       if (exams.length === 0) {
@@ -199,7 +232,7 @@
       }
 
       renderExamCheckboxes();
-      status.textContent = `Ready! Found ${exams.length} exam(s).`;
+      status.textContent = `Ready! Found ${exams.length} exam blocks.`;
     }
 
     function renderExamCheckboxes() {
@@ -217,18 +250,17 @@
       if (e.key === "Enter") showResults();
     });
 
-    // Helper function to extract class number from a string (handles both "8" and "VIII")
     function extractClassNumber(clsString) {
       const str = String(clsString).toUpperCase();
       if (str.includes("9") || str.includes("IX")) return 9;
       if (str.includes("8") || str.includes("VIII")) return 8;
       if (str.includes("7") || str.includes("VII")) return 7;
       if (str.includes("6") || str.includes("VI")) return 6;
-      return 0; // Default if not found
+      return 0; 
     }
 
     function showResults() {
-      const examNo = document.getElementById("examNoInput").value.trim();
+      const examNo = cleanID(document.getElementById("examNoInput").value);
       if (!examNo) {
         status.textContent = "Enter EMIS Number";
         return;
@@ -245,15 +277,15 @@
       
       selected.forEach(idx => {
         const exam = exams[idx];
-        const row = sheetRows.find(r => r[exam.EXAMNOCol] != null && String(r[exam.EXAMNOCol]).trim() === examNo);
+        const row = sheetRows.find(r => r[exam.EXAMNOCol] != null && cleanID(r[exam.EXAMNOCol]) === examNo);
 
         if (row) {
           const marks = {};
           exam.subjects.forEach(s => { marks[s.name] = row[s.col] ?? "-"; });
           results.push({ 
             exam: exam.label, 
-            total: row[exam.totalCol] ?? "-", 
-            manualResult: exam.resultCol !== null ? (row[exam.resultCol] ?? "") : "", // Grab the manual result
+            total: exam.totalCol !== null ? (row[exam.totalCol] ?? "-") : "-", 
+            manualResult: exam.resultCol !== null ? (row[exam.resultCol] ?? "") : "", 
             marks 
           });
         } else {
@@ -273,7 +305,7 @@
     }
 
     function renderTable(examno, results) {
-      const studentData = studentInfoMap[examno] || { name: "Name not found", classSec: "—" };
+      const studentData = studentInfoMap[examno] || { name: "Name not found in Sheet2", classSec: "—" };
       const classNum = extractClassNumber(studentData.classSec);
       const isRTE = (classNum >= 6 && classNum <= 8);
       
@@ -289,30 +321,23 @@
         return a.localeCompare(b);
       });
 
-      // Build Headers
       let html = `<table><thead><tr><th>Subject</th>`;
       results.forEach(r => {
         html += `<th>${r.exam}</th>`;
-        if (r.exam.toLowerCase().includes("annual")) {
-          html += `<th>Result</th>`; 
-        }
+        if (r.exam.toLowerCase().includes("annual")) html += `<th>Result</th>`; 
       });
       html += `</tr></thead><tbody>`;
 
-      // Build Rows for Subjects (Result column stays blank here, it's an overall status)
       subjects.forEach(sub => {
         html += `<tr><td style="font-weight:600;">${sub}</td>`;
         results.forEach(r => {
           const mark = r.marks[sub] ?? "-";
           html += `<td>${mark}</td>`;
-          if (r.exam.toLowerCase().includes("annual")) {
-             html += `<td>-</td>`; 
-          }
+          if (r.exam.toLowerCase().includes("annual")) html += `<td>-</td>`; 
         });
         html += `</tr>`;
       });
 
-      // Build Total Row with Final Overall Result
       html += `<tr class="total-row"><td>TOTAL</td>`;
       results.forEach(r => {
         html += `<td>${r.total}</td>`;
@@ -321,14 +346,12 @@
           let finalStatus = "—";
           let statusClass = "result-pending";
           
-          if (r.total !== "-") { // Only show result if they actually have marks
+          if (r.total !== "-") { 
             if (isRTE) {
               finalStatus = "PASS (RTE)";
               statusClass = "result-pass";
             } else {
-              // Class 9: Check the manual result column from Google Sheets
               let manual = String(r.manualResult).toUpperCase().trim();
-              
               if (manual.includes("PASS")) {
                  finalStatus = manual;
                  statusClass = "result-pass";
@@ -336,7 +359,7 @@
                  finalStatus = manual;
                  statusClass = "result-fail";
               } else if (manual && manual !== "NULL") {
-                 finalStatus = manual; // Neutral fallback if you type something else
+                 finalStatus = manual; 
                  statusClass = "result-pass"; 
               }
             }
@@ -346,7 +369,6 @@
       });
       html += `</tr></tbody></table>`;
 
-      // Update UI
       document.getElementById("sName").textContent = studentData.name;
       document.getElementById("sEXAMNO").textContent = examno;
       document.getElementById("sClass").textContent = studentData.classSec;
@@ -354,7 +376,6 @@
       document.getElementById("tableWrapper").innerHTML = html;
     }
 
-    // Initialize
     loadData();
   </script>
 </body>
