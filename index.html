@@ -205,8 +205,8 @@
       border-bottom: none;
     }
     
-    .result-pass { color: #16a34a; font-weight: 700; }
-    .result-fail { color: #dc2626; font-weight: 700; }
+    .result-pass { color: #16a34a; font-weight: 700; } /* Green */
+    .result-fail { color: #dc2626; font-weight: 700; } /* Red */
     .result-pending { color: #94a3b8; font-style: italic; }
     
     @media (max-width: 840px) { 
@@ -309,11 +309,7 @@
         const f = firstRow[i] || "";
         if (emisCol === -1 && (h.includes("emis") || h.includes("examno") || f.includes("emis"))) emisCol = i;
         if (nameCol === -1 && (h.includes("name") || f.includes("name"))) nameCol = i;
-        
-        // Find Class Column
         if (classCol === -1 && (h === "class" || h.includes("std") || f === "class")) classCol = i;
-        
-        // Find Section Column
         if (secCol === -1 && (h === "sec" || h.includes("section") || f === "sec" || f === "section")) secCol = i;
       }
 
@@ -328,13 +324,10 @@
         if (!emis && emisCol === 0 && row.length > 1) emis = cleanID(row[1]); 
 
         if (emis && emis !== "null") {
-          // Grab both class and section safely
           let className = classCol !== -1 ? String(row[classCol] || "").trim() : "";
           let sectionName = secCol !== -1 ? String(row[secCol] || "").trim() : "";
           
           let fullClassSec = className;
-          
-          // Only append section if it exists and isn't the exact same column data
           if (sectionName && className !== sectionName) {
              fullClassSec += " - " + sectionName;
           } else if (!className && sectionName) {
@@ -398,7 +391,8 @@
             EXAMNOCol: -1
           };
         } 
-        else if (hLower === "result" || hLower.includes("status")) {
+        // More robust checking to find the Result column
+        else if (hLower.includes("result") || hLower === "status") {
            if (exams.length > 0 && currentBlock.subjects.length === 0) {
               exams[exams.length - 1].resultCol = c; 
            } else {
@@ -551,21 +545,25 @@
           let statusClass = "result-pending";
           
           if (r.total !== "-") { 
-            if (isRTE) {
+            let manual = String(r.manualResult).trim();
+            
+            // Priority 1: Check what you manually typed in the Result column
+            if (manual && manual.toLowerCase() !== "null" && manual !== "-") {
+              finalStatus = manual; // Uses your exact text (e.g. "Passed", "Failed")
+              
+              let manualUpper = manual.toUpperCase();
+              if (manualUpper.includes("PASS")) {
+                 statusClass = "result-pass";
+              } else if (manualUpper.includes("FAIL") || manualUpper.includes("DETAIN")) {
+                 statusClass = "result-fail";
+              } else {
+                 statusClass = "result-pending"; 
+              }
+            } 
+            // Priority 2: If manual column is empty, fallback to Auto-Pass for 6-8
+            else if (isRTE) {
               finalStatus = "PASS (RTE)";
               statusClass = "result-pass";
-            } else {
-              let manual = String(r.manualResult).toUpperCase().trim();
-              if (manual.includes("PASS")) {
-                 finalStatus = manual;
-                 statusClass = "result-pass";
-              } else if (manual.includes("DETAIN") || manual.includes("FAIL")) {
-                 finalStatus = manual;
-                 statusClass = "result-fail";
-              } else if (manual && manual !== "NULL") {
-                 finalStatus = manual; 
-                 statusClass = "result-pass"; 
-              }
             }
           }
           html += `<td class="${statusClass}">${finalStatus}</td>`;
@@ -583,4 +581,4 @@
     loadData();
   </script>
 </body>
-</html>
+  </html>
