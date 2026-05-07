@@ -462,20 +462,21 @@
       selected.forEach(idx => {
         const exam = exams[idx];
         
+        // --- FIXED SEARCH LOGIC ---
+        // Search exclusively within THIS exam block's EMIS column
         const row = sheetRows.find(r => {
-          let rowHasMatchingEmis = exams.some(e => {
-            if (e.EXAMNOCol === -1) return false;
-            let cellVal = cleanID(r[e.EXAMNOCol]);
+          if (exam.EXAMNOCol !== -1) {
+            let cellVal = cleanID(r[exam.EXAMNOCol]);
             return cellVal === examNo || (cellVal.length >= 8 && examNo.endsWith(cellVal));
-          });
-          
-          if (rowHasMatchingEmis) return true;
-
-          return [0, 1, 2, 3].some(colIdx => {
-             let colVal = cleanID(r[colIdx]);
-             return colVal === examNo || (colVal.length >= 8 && examNo.endsWith(colVal));
-          });
+          } else {
+            // Fallback only if this specific block lacks an EMIS column
+            return [0, 1, 2, 3].some(colIdx => {
+               let colVal = cleanID(r[colIdx]);
+               return colVal === examNo || (colVal.length >= 8 && examNo.endsWith(colVal));
+            });
+          }
         });
+        // --------------------------
 
         if (row) {
           const marks = {};
@@ -581,4 +582,4 @@
     loadData();
   </script>
 </body>
-  </html>
+</html>
